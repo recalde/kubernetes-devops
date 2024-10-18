@@ -1,0 +1,20 @@
+---
+- name: Configure OverlayFS for Root
+  blockinfile:
+    path: /etc/initramfs-tools/scripts/init-bottom/overlay
+    create: yes
+    mode: '0755'
+    owner: root
+    group: root
+    block: |
+      #!/bin/sh
+      if [ "$rootmnt" = "/root" ]; then
+        mount -t tmpfs tmpfs /mnt
+        mkdir /mnt/lower /mnt/upper /mnt/work /mnt/newroot
+        mount --move $rootmnt /mnt/lower
+        mount -t overlay overlay -o lowerdir=/mnt/lower,upperdir=/mnt/upper,workdir=/mnt/work /mnt/newroot
+        mount --move /mnt/newroot $rootmnt
+        mount --move /mnt/lower/boot $rootmnt/boot
+      fi
+  notify:
+    - Update Initramfs

@@ -1,0 +1,48 @@
+---
+- name: Create Kubernetes VM Nodes
+  hosts: proxmox
+  gather_facts: no
+  collections:
+    - community.general
+  vars:
+    api_host: "{{ ansible_host }}"
+    api_user: "{{ ansible_user }}"
+    api_password: "{{ ansible_password }}"
+    node: "proxmox_node_name"  # Replace with your Proxmox node name
+    template_id: 9000          # ID of your Cloud-Init template
+    pool: "your_pool"          # Replace with your Proxmox pool name if applicable
+    vm_memory: 16384           # 16 GB RAM
+    vm_cores: 4
+    vm_sockets: 1
+    vm_disk_size: 256          # Size in GB for the main disk
+    vm_zfs_disk_size: 512      # Size in GB for the ZFS disk
+    ci_user: "debian"
+    ci_password: "your_vm_password"  # Replace with a secure password
+    gw: "YOUR_GATEWAY_IP"            # Replace with your network gateway IP
+  tasks:
+    - name: Create VM {{ item.name }}
+      community.general.proxmox_kvm:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_password: "{{ api_password }}"
+        node: "{{ node }}"
+        clone: "{{ template_id }}"
+        name: "{{ item.name }}"
+        vmid: "{{ item.vmid }}"
+        memory: "{{ vm_memory }}"
+        cores: "{{ vm_cores }}"
+        sockets: "{{ vm_sockets }}"
+        onboot: yes
+        scsi0: "local-lvm:{{ vm_disk_size }},ssd=1"
+        scsi1: "local-zfs:{{ vm_zfs_disk_size }},ssd=1"
+        net0: "virtio,bridge=vmbr0"
+        ciuser: "{{ ci_user }}"
+        cipassword: "{{ ci_password }}"
+        ipconfig0: "ip={{ item.ip }}/24,gw={{ gw }}"
+        pool: "{{ pool }}"
+        autostart: yes
+        timeout: 300
+      loop:
+        - { name: 'kube-master', vmid: 100, ip: '192.168.1.100' }
+        - { name: 'kube-worker1', vmid: 101, ip: '192.168.1.101' }
+        - { name: 'kube-worker2', vmid: 102, ip: '192.168.1.102' }

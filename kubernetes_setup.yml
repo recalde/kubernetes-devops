@@ -1,0 +1,95 @@
+---
+- name: Configure VMs for Ephemeral OS
+  hosts: kubernetes
+  become: yes
+  roles:
+    - ephemeral_os
+- name: Install Kubernetes Dependencies and Components
+  hosts: kubernetes
+  become: yes
+  vars:
+    kubernetes_version: '1.26.0-00'
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Add Kubernetes apt key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - kubelet={{ kubernetes_version }}
+          - kubeadm={{ kubernetes_version }}
+          - kubectl={{ kubernetes_version }}
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages at current version
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        mark_hold: yes
+
+- name: Initialize Kubernetes Master Node
+  hosts: kubernetes-master
+  become: yes
+  tasks:
+    - name: Initialize Kubernetes Master
+      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Set kubeconfig for debian user
+      become_user: debian
+      shell: |
+        mkdir -p $HOME/.kube
+        sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Install Calico Network Plugin
+      become_user: debian
+      shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+    - name: Get Join Command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Save Join Command
+      set_fact:
+        join_cmd: "{{ join_command.stdout }} --ignore-preflight-errors=all"
+
+    - name: Share Join Command with other hosts
+      add_host:
+        name: "join_command_holder"
+        join_cmd: "{{ join_cmd }}"
+
+- name: Join Worker Nodes to Cluster
+  hosts: kubernetes-workers
+  become: yes
+  tasks:
+    - name: Retrieve Join Command
+      set_fact:
+        join_cmd: "{{ hostvars['join_command_holder']['join_cmd'] }}"
+
+    - name: Join the cluster
+      command: "{{ join_cmd }}"
+

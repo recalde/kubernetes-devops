@@ -1,0 +1,13 @@
+#cloud-config
+package_update: true
+packages:
+  - docker.io
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+runcmd:
+  - sudo usermod -aG docker debian
+  - sudo systemctl enable docker
+  - sudo systemctl start docker
